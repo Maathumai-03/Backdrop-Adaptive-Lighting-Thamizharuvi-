@@ -1,4 +1,4 @@
-# Thamizharuvi — Backdrop Lighting System
+# Backdrop-Adaptive-Lighting-Thamizharuvi-
 
 Audio-reactive + preprogrammed LED backdrop lighting control for the
 Thamizharuvi stage (6 edge-lit silhouette panels + center calligraphy
