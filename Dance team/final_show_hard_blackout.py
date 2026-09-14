@@ -41,9 +41,9 @@ PANELS = {
     "R_back":  (873, 154, 1015, 495),
 }
 PAIRS = {
-    "front": ("L_front", "R_front"),
-    "mid":   ("L_mid", "R_mid"),
-    "back":  ("L_back", "R_back"),
+    "front": ("L_front", "R_mid"),    # their numbers 1 & 6 -- closest to viewer
+    "mid":   ("L_back", "R_front"),   # their numbers 2 & 5 -- middle distance
+    "back":  ("L_mid", "R_back"),     # their numbers 3 & 7 -- farthest from viewer
 }
 LEFT_PANELS = ["L_front", "L_mid", "L_back"]
 RIGHT_PANELS = ["R_front", "R_mid", "R_back"]
@@ -118,7 +118,7 @@ def _normalize(key, value):
 def _detect_onset(amp):
     now = time.monotonic()
     _rolling["avg"] = _rolling["avg"] * 0.9 + amp * 0.1
-    if amp > _rolling["avg"] * 1.5 and amp > 0.001 and (now - audio_state["last_beat_time"]) > 0.12:
+    if amp > _rolling["avg"] * 1.5 and amp > 0.001 and (now - audio_state["last_beat_time"]) > 0.3:
         audio_state["beat_count"] += 1
         audio_state["last_beat_time"] = now
         audio_state["last_beat_amp"] = float(np.clip(amp / (_rolling["avg"] + 1e-9) / 3, 0, 1))
@@ -203,21 +203,6 @@ def seq_chase(t):
     return {panel: FLOOR + (1 - FLOOR) * intensity}, False
 
 
-_sparkle_state = {}
-def seq_sparkle(t):
-    b = {}
-    density = max(audio_state["amp"], 0.15)
-    bucket = int(t * 4)
-    for name in PANELS:
-        key = f"{name}_{bucket}"
-        if key not in _sparkle_state:
-            _sparkle_state.clear()
-            for n in PANELS:
-                _sparkle_state[f"{n}_{bucket}"] = np.random.uniform(0, density)
-        b[name] = FLOOR + _sparkle_state.get(key, 0)
-    return b, False
-
-
 def seq_all_pulse(t):
     amp = audio_state["amp"]
     return {name: FLOOR + (1 - FLOOR) * amp for name in PANELS}, False
@@ -246,19 +231,19 @@ TIMELINE = [
     (0.00,   37.00,  "Dialogue - BLACKOUT",         seq_blackout),
     (37.00,  201.00, "Depth-Pair Sweep",            seq_depth_sweep),   # 0:37-3:21
     (201.00, 215.00, "Dialogue - BLACKOUT",         seq_blackout),      # 3:21-3:35
-    (215.00, 313.00, "Sparkle Flicker",             seq_sparkle),       # 3:35-5:13
+    (215.00, 313.00, "Multiband Pairs",              seq_multiband),     # 3:35-5:13
     (313.00, 327.00, "Dialogue - BLACKOUT",         seq_blackout),      # 5:13-5:27
-    (327.00, 478.00, "Chase",                       seq_chase),         # 5:27-7:58
+    (327.00, 478.00, "All-Together Pulse",          seq_all_pulse),     # 5:27-7:58
     (478.00, 487.00, "Dialogue - BLACKOUT",         seq_blackout),      # 7:58-8:07
     (487.00, 606.00, "Multiband Pairs",             seq_multiband),     # 8:07-10:06
     (606.00, 617.00, "Dialogue - BLACKOUT",         seq_blackout),      # 10:06-10:17
-    (617.00, 724.00, "Left <-> Right Alternate",    seq_lr_alternate),  # 10:17-12:04
+    (617.00, 724.00, "Depth-Pair Sweep",            seq_depth_sweep),   # 10:17-12:04
     (724.00, 744.00, "Dialogue - BLACKOUT",         seq_blackout),      # 12:04-12:24
     (744.00, 977.00, "All-Together Pulse",          seq_all_pulse),     # 12:24-16:17
     (977.00, 984.00, "Dialogue - BLACKOUT",         seq_blackout),      # 16:17-16:24
     (984.00, 1094.00,"Depth-Pair Sweep",            seq_depth_sweep),   # 16:24-18:14
     (1094.00,1104.00,"Dialogue - BLACKOUT",         seq_blackout),      # 18:14-18:24
-    (1104.00,1264.00,"Chase",                       seq_chase),         # 18:24-21:04
+    (1104.00,1264.00,"Multiband Pairs",             seq_multiband),     # 18:24-21:04
     (1264.00,1287.00,"Dialogue - BLACKOUT",         seq_blackout),      # 21:04-21:27
 ]
 

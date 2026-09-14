@@ -12,9 +12,9 @@ venv/
 # if the repo grows to include more tracks/photos over time:
 #   git lfs install
 #   git lfs track "*.mp3" "*.wav" "*.mpeg"
-# *.mp3
-# *.wav
-# *.mpeg
+Dance team/*.mp3
+Dance team/*.mpeg
+Dance team/*.wav
 
 # Editor
 .vscode/
