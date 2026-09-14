@@ -1,0 +1,21 @@
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Large media — consider Git LFS instead of committing these directly
+# if the repo grows to include more tracks/photos over time:
+#   git lfs install
+#   git lfs track "*.mp3" "*.wav" "*.mpeg"
+# *.mp3
+# *.wav
+# *.mpeg
+
+# Editor
+.vscode/
+.idea/
