@@ -1,0 +1,471 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Backdrop Lighting Cue Controller</title>
+    <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            margin: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+                'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+            -webkit-font-smoothing: antialiased;
+            -moz-osx-font-smoothing: grayscale;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+
+        // ---- Icons (inline SVG, same approach as the photobooth app) ----
+        const Plus = ({ size = 18 }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 5v14M5 12h14" />
+            </svg>
+        );
+        const Trash = ({ size = 16 }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m3 0v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6h14Z" />
+            </svg>
+        );
+        const Play = ({ size = 16 }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" stroke="none">
+                <path d="M8 5v14l11-7L8 5Z" />
+            </svg>
+        );
+        const ArrowUp = ({ size = 14 }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 19V5M5 12l7-7 7 7" />
+            </svg>
+        );
+        const ArrowDown = ({ size = 14 }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12 5v14M5 12l7 7 7-7" />
+            </svg>
+        );
+        const Radio = ({ size = 20 }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4.9 19.1C1 15.2 1 8.8 4.9 4.9M7.8 16.2c-2.3-2.3-2.3-6.1 0-8.5M16.2 7.8c2.3 2.3 2.3 6.1 0 8.5M19.1 4.9C23 8.8 23 15.2 19.1 19.1" />
+                <circle cx="12" cy="12" r="2" />
+            </svg>
+        );
+        const Settings = ({ size = 20 }) => (
+            <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+                <circle cx="12" cy="12" r="3" />
+            </svg>
+        );
+
+        // ---- Config ----
+        const PORTION_TYPES = [
+            { id: 'MELODY', label: 'Melody / Vocal', desc: 'Smooth envelope-follow on the vocal/mid band' },
+            { id: 'BEAT', label: 'Beat Position', desc: 'Flashes on detected transients/onsets' },
+            { id: 'FAST_BEAT', label: 'Fast Beat', desc: 'Tempo-locked rhythmic flashing for dense/uptempo sections' },
+            { id: 'COMBINED', label: 'Combined', desc: 'Frequency -> panel/color, amplitude -> brightness' },
+            { id: 'STATIC', label: 'Static / Manual', desc: 'Fixed look, no audio reactivity' },
+        ];
+
+        const SEQUENCES = [
+            { id: 'MULTIBAND', label: 'Multi-band Mapped' },
+            { id: 'MIRROR', label: 'Mirror' },
+            { id: 'SEQUENTIAL', label: 'Sequential' },
+            { id: 'VU', label: 'Combined (VU)' },
+            { id: 'SOLID', label: 'Solid Wash' },
+        ];
+
+        // sensible default sequence per portion type - user can still override
+        const DEFAULT_SEQUENCE = {
+            MELODY: 'MULTIBAND',
+            BEAT: 'SEQUENTIAL',
+            FAST_BEAT: 'VU',
+            COMBINED: 'MULTIBAND',
+            STATIC: 'SOLID',
+        };
+
+        const TYPE_COLOR = {
+            MELODY: 'border-emerald-500 text-emerald-400',
+            BEAT: 'border-orange-500 text-orange-400',
+            FAST_BEAT: 'border-red-500 text-red-400',
+            COMBINED: 'border-purple-500 text-purple-400',
+            STATIC: 'border-gray-500 text-gray-400',
+        };
+
+        const STORAGE_KEY = 'backdrop_cue_events_v1';
+
+        const uid = () => Math.random().toString(36).slice(2, 10);
+
+        const mmss = (totalSeconds) => {
+            const s = Math.max(0, Math.round(totalSeconds || 0));
+            const m = Math.floor(s / 60);
+            const r = s % 60;
+            return `${m}:${r.toString().padStart(2, '0')}`;
+        };
+        const parseMMSS = (text) => {
+            const parts = text.split(':').map(p => parseInt(p, 10));
+            if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+                return parts[0] * 60 + parts[1];
+            }
+            const n = parseInt(text, 10);
+            return isNaN(n) ? 0 : n;
+        };
+
+        const newPortion = (startTime = 0) => ({
+            id: uid(),
+            label: 'New portion',
+            startTime,
+            duration: 30,
+            type: 'MELODY',
+            sequence: DEFAULT_SEQUENCE['MELODY'],
+        });
+
+        const newEvent = (name) => ({
+            id: uid(),
+            name,
+            portions: [newPortion(0)],
+        });
+
+        const defaultEvents = () => [newEvent('Untitled Event')];
+
+        const BackdropController = () => {
+            const [events, setEvents] = useState(() => {
+                try {
+                    const saved = localStorage.getItem(STORAGE_KEY);
+                    if (saved) return JSON.parse(saved);
+                } catch (e) { /* ignore */ }
+                return defaultEvents();
+            });
+            const [activeEventId, setActiveEventId] = useState(() => events[0]?.id);
+            const [activePortionId, setActivePortionId] = useState(null);
+            const [wsUrl, setWsUrl] = useState('ws://localhost:8765');
+            const [wsStatus, setWsStatus] = useState('disconnected');
+            const [showSettings, setShowSettings] = useState(false);
+            const [view, setView] = useState('author'); // 'author' | 'live'
+            const wsRef = useRef(null);
+
+            useEffect(() => {
+                try {
+                    localStorage.setItem(STORAGE_KEY, JSON.stringify(events));
+                } catch (e) { /* storage full or unavailable, ignore */ }
+            }, [events]);
+
+            const activeEvent = events.find(e => e.id === activeEventId) || events[0];
+
+            const connectWS = () => {
+                try {
+                    setWsStatus('connecting');
+                    const socket = new WebSocket(wsUrl);
+                    socket.onopen = () => setWsStatus('connected');
+                    socket.onclose = () => setWsStatus('disconnected');
+                    socket.onerror = () => setWsStatus('error');
+                    wsRef.current = socket;
+                } catch (e) {
+                    setWsStatus('error');
+                }
+            };
+
+            const send = (payload) => {
+                if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+                    wsRef.current.send(JSON.stringify(payload));
+                    console.log('sent', payload);
+                } else {
+                    console.warn('WebSocket not connected, not sent:', payload);
+                }
+            };
+
+            // ---- event management ----
+            const addEvent = () => {
+                const ev = newEvent(`Event ${events.length + 1}`);
+                setEvents([...events, ev]);
+                setActiveEventId(ev.id);
+            };
+            const renameEvent = (id, name) => {
+                setEvents(events.map(e => e.id === id ? { ...e, name } : e));
+            };
+            const deleteEvent = (id) => {
+                if (!confirm('Delete this event and all its portions?')) return;
+                const remaining = events.filter(e => e.id !== id);
+                setEvents(remaining.length ? remaining : defaultEvents());
+                if (activeEventId === id) {
+                    setActiveEventId((remaining[0] || defaultEvents()[0]).id);
+                }
+            };
+
+            // ---- portion management (within active event) ----
+            const updatePortions = (portions) => {
+                setEvents(events.map(e => e.id === activeEvent.id ? { ...e, portions } : e));
+            };
+            const addPortion = () => {
+                const last = activeEvent.portions[activeEvent.portions.length - 1];
+                const start = last ? last.startTime + last.duration : 0;
+                updatePortions([...activeEvent.portions, newPortion(start)]);
+            };
+            const updatePortion = (id, field, value) => {
+                updatePortions(activeEvent.portions.map(p => {
+                    if (p.id !== id) return p;
+                    const next = { ...p, [field]: value };
+                    if (field === 'type') next.sequence = DEFAULT_SEQUENCE[value];
+                    return next;
+                }));
+            };
+            const deletePortion = (id) => {
+                updatePortions(activeEvent.portions.filter(p => p.id !== id));
+            };
+            const movePortion = (id, dir) => {
+                const idx = activeEvent.portions.findIndex(p => p.id === id);
+                const swapWith = idx + dir;
+                if (swapWith < 0 || swapWith >= activeEvent.portions.length) return;
+                const arr = [...activeEvent.portions];
+                [arr[idx], arr[swapWith]] = [arr[swapWith], arr[idx]];
+                updatePortions(arr);
+            };
+
+            // ---- live trigger ----
+            const triggerPortion = (portion) => {
+                setActivePortionId(portion.id);
+                send({
+                    cmd: 'trigger_portion',
+                    event: activeEvent.name,
+                    portionId: portion.id,
+                    label: portion.label,
+                    type: portion.type,
+                    sequence: portion.sequence,
+                    duration: portion.duration,
+                });
+            };
+            const triggerLiveFallback = () => {
+                setActivePortionId('LIVE');
+                send({ cmd: 'force_live_reactive' });
+            };
+            const blackout = () => {
+                setActivePortionId(null);
+                send({ cmd: 'blackout' });
+            };
+
+            const totalDuration = activeEvent.portions.reduce((sum, p) => sum + p.duration, 0);
+
+            return (
+                <div className="min-h-screen bg-gradient-to-br from-gray-900 via-purple-900 to-gray-900 text-white p-4">
+                    <div className="max-w-6xl mx-auto">
+                        {/* Header */}
+                        <div className="bg-gray-800 rounded-lg p-6 mb-6 shadow-2xl border border-purple-500">
+                            <div className="flex items-center justify-between flex-wrap gap-4">
+                                <div className="flex items-center gap-3">
+                                    <Radio size={36} />
+                                    <div>
+                                        <h1 className="text-3xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent">
+                                            Backdrop Lighting Cue Controller
+                                        </h1>
+                                        <p className="text-gray-400 text-sm">Preprogrammed cues + live audio-reactive fallback, over WebSocket</p>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <div className="flex items-center gap-2">
+                                        <div className={`w-3 h-3 rounded-full ${wsStatus === 'connected' ? 'bg-green-500' :
+                                            wsStatus === 'connecting' ? 'bg-yellow-500 animate-pulse' :
+                                                wsStatus === 'error' ? 'bg-red-500' : 'bg-gray-500'
+                                            }`}></div>
+                                        <span className="text-sm text-gray-300">
+                                            {wsStatus === 'connected' ? 'Connected' :
+                                                wsStatus === 'connecting' ? 'Connecting...' :
+                                                    wsStatus === 'error' ? 'Error' : 'Disconnected'}
+                                        </span>
+                                    </div>
+                                    <button onClick={() => setShowSettings(!showSettings)}
+                                        className="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors" title="Settings">
+                                        <Settings />
+                                    </button>
+                                    {wsStatus !== 'connected' && wsStatus !== 'connecting' && (
+                                        <button onClick={connectWS}
+                                            className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded-lg transition-colors text-sm">
+                                            Connect
+                                        </button>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Settings */}
+                        {showSettings && (
+                            <div className="bg-gray-800 rounded-lg p-6 mb-6 shadow-xl border border-gray-600">
+                                <h3 className="text-xl font-bold mb-4">WebSocket Settings</h3>
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="block text-sm text-gray-400 mb-2">Server URL</label>
+                                        <input type="text" value={wsUrl} onChange={(e) => setWsUrl(e.target.value)}
+                                            placeholder="ws://localhost:8765"
+                                            className="w-full bg-gray-700 text-white px-3 py-2 rounded-lg border border-gray-600 focus:border-purple-500 focus:outline-none" />
+                                        <p className="text-xs text-gray-500 mt-2">Point this at your local audio-analysis/cue bridge on the venue network - not a public server, for latency and reliability.</p>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => { setShowSettings(false); connectWS(); }}
+                                            className="flex-1 bg-purple-600 hover:bg-purple-700 px-4 py-2 rounded-lg transition-colors">
+                                            Apply & Reconnect
+                                        </button>
+                                        <button onClick={() => setShowSettings(false)}
+                                            className="flex-1 bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg transition-colors">
+                                            Cancel
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* View toggle */}
+                        <div className="bg-gray-800 rounded-lg mb-6 p-2 flex gap-2 shadow-xl">
+                            {['author', 'live'].map(v => (
+                                <button key={v} onClick={() => setView(v)}
+                                    className={`flex-1 py-3 px-4 rounded-lg font-medium transition-all ${view === v ? 'bg-purple-600 text-white shadow-lg' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}>
+                                    {v === 'author' ? 'Authoring' : 'Live / Showtime'}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Event tabs */}
+                        <div className="bg-gray-800 rounded-lg mb-6 p-2 flex gap-2 shadow-xl flex-wrap items-center">
+                            {events.map(ev => (
+                                <button key={ev.id} onClick={() => { setActiveEventId(ev.id); setActivePortionId(null); }}
+                                    className={`py-2 px-4 rounded-lg font-medium transition-all ${ev.id === activeEventId ? 'bg-pink-600 text-white shadow-lg' : 'bg-gray-700 text-gray-300 hover:bg-gray-600'}`}>
+                                    {ev.name}
+                                </button>
+                            ))}
+                            <button onClick={addEvent} className="p-2 bg-gray-700 hover:bg-gray-600 rounded-lg transition-colors" title="Add event">
+                                <Plus />
+                            </button>
+                        </div>
+
+                        {/* AUTHORING VIEW */}
+                        {view === 'author' && (
+                            <div className="bg-gray-800 rounded-lg p-6 shadow-xl border border-gray-700">
+                                <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
+                                    <input value={activeEvent.name} onChange={(e) => renameEvent(activeEvent.id, e.target.value)}
+                                        className="bg-transparent text-2xl font-bold border-b border-transparent hover:border-gray-600 focus:border-purple-500 focus:outline-none" />
+                                    <div className="flex items-center gap-3">
+                                        <span className="text-sm text-gray-400">Total: {mmss(totalDuration)}</span>
+                                        <button onClick={() => deleteEvent(activeEvent.id)}
+                                            className="px-3 py-1.5 bg-red-900/50 hover:bg-red-900 text-red-300 rounded-lg text-sm transition-colors">
+                                            Delete event
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-3">
+                                    {activeEvent.portions.map((p, idx) => (
+                                        <div key={p.id} className={`bg-gray-900 rounded-lg p-4 border-l-4 ${TYPE_COLOR[p.type]}`}>
+                                            <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+                                                <div className="md:col-span-3">
+                                                    <label className="block text-xs text-gray-500 mb-1">Portion label</label>
+                                                    <input value={p.label} onChange={(e) => updatePortion(p.id, 'label', e.target.value)}
+                                                        className="w-full bg-gray-800 text-white px-2 py-1.5 rounded border border-gray-700 focus:border-purple-500 focus:outline-none text-sm" />
+                                                </div>
+                                                <div className="md:col-span-2">
+                                                    <label className="block text-xs text-gray-500 mb-1">Start (mm:ss)</label>
+                                                    <input value={mmss(p.startTime)} onChange={(e) => updatePortion(p.id, 'startTime', parseMMSS(e.target.value))}
+                                                        className="w-full bg-gray-800 text-white px-2 py-1.5 rounded border border-gray-700 focus:border-purple-500 focus:outline-none text-sm" />
+                                                </div>
+                                                <div className="md:col-span-2">
+                                                    <label className="block text-xs text-gray-500 mb-1">Duration (sec)</label>
+                                                    <input type="number" value={p.duration} onChange={(e) => updatePortion(p.id, 'duration', parseInt(e.target.value, 10) || 0)}
+                                                        className="w-full bg-gray-800 text-white px-2 py-1.5 rounded border border-gray-700 focus:border-purple-500 focus:outline-none text-sm" />
+                                                </div>
+                                                <div className="md:col-span-2">
+                                                    <label className="block text-xs text-gray-500 mb-1">Type</label>
+                                                    <select value={p.type} onChange={(e) => updatePortion(p.id, 'type', e.target.value)}
+                                                        className="w-full bg-gray-800 text-white px-2 py-1.5 rounded border border-gray-700 focus:border-purple-500 focus:outline-none text-sm">
+                                                        {PORTION_TYPES.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                                                    </select>
+                                                </div>
+                                                <div className="md:col-span-2">
+                                                    <label className="block text-xs text-gray-500 mb-1">Sequence</label>
+                                                    <select value={p.sequence} onChange={(e) => updatePortion(p.id, 'sequence', e.target.value)}
+                                                        className="w-full bg-gray-800 text-white px-2 py-1.5 rounded border border-gray-700 focus:border-purple-500 focus:outline-none text-sm">
+                                                        {SEQUENCES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                                                    </select>
+                                                </div>
+                                                <div className="md:col-span-1 flex gap-1 justify-end">
+                                                    <button onClick={() => movePortion(p.id, -1)} disabled={idx === 0}
+                                                        className="p-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-30 rounded"><ArrowUp /></button>
+                                                    <button onClick={() => movePortion(p.id, 1)} disabled={idx === activeEvent.portions.length - 1}
+                                                        className="p-1.5 bg-gray-800 hover:bg-gray-700 disabled:opacity-30 rounded"><ArrowDown /></button>
+                                                    <button onClick={() => deletePortion(p.id)}
+                                                        className="p-1.5 bg-red-900/50 hover:bg-red-900 text-red-300 rounded"><Trash /></button>
+                                                </div>
+                                            </div>
+                                            <p className="text-xs text-gray-500 mt-2">{PORTION_TYPES.find(t => t.id === p.type)?.desc}</p>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                <button onClick={addPortion}
+                                    className="mt-4 w-full py-3 bg-gray-700 hover:bg-gray-600 rounded-lg flex items-center justify-center gap-2 transition-colors text-sm font-medium">
+                                    <Plus size={16} /> Add portion
+                                </button>
+                            </div>
+                        )}
+
+                        {/* LIVE VIEW */}
+                        {view === 'live' && (
+                            <div className="bg-gray-800 rounded-lg p-6 shadow-xl border border-pink-500">
+                                <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
+                                    <h2 className="text-2xl font-bold">{activeEvent.name} - Showtime</h2>
+                                    <div className="flex gap-2">
+                                        <button onClick={triggerLiveFallback}
+                                            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${activePortionId === 'LIVE' ? 'bg-orange-600' : 'bg-gray-700 hover:bg-gray-600'}`}>
+                                            Force Live-Reactive
+                                        </button>
+                                        <button onClick={blackout}
+                                            className="px-4 py-2 bg-red-900/50 hover:bg-red-900 text-red-300 rounded-lg text-sm font-medium transition-colors">
+                                            Blackout
+                                        </button>
+                                    </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                    {activeEvent.portions.map(p => (
+                                        <button key={p.id} onClick={() => triggerPortion(p)}
+                                            className={`w-full text-left p-4 rounded-lg border-l-4 transition-all flex items-center justify-between gap-4 ${TYPE_COLOR[p.type]} ${activePortionId === p.id ? 'bg-purple-900/60 shadow-lg scale-[1.01]' : 'bg-gray-900 hover:bg-gray-700'}`}>
+                                            <div className="flex items-center gap-4">
+                                                <Play size={18} />
+                                                <div>
+                                                    <div className="font-medium">{p.label}</div>
+                                                    <div className="text-xs text-gray-500">
+                                                        {mmss(p.startTime)} - {mmss(p.startTime + p.duration)} ({p.duration}s) &middot; {PORTION_TYPES.find(t => t.id === p.type)?.label} &middot; {SEQUENCES.find(s => s.id === p.sequence)?.label}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            {activePortionId === p.id && <span className="text-xs font-bold text-purple-300 uppercase tracking-wide">Active</span>}
+                                        </button>
+                                    ))}
+                                </div>
+                                {activeEvent.portions.length === 0 && (
+                                    <p className="text-gray-500 text-sm">No portions yet - add some in the Authoring tab first.</p>
+                                )}
+                            </div>
+                        )}
+
+                        {/* Footer */}
+                        <div className="mt-8 text-center text-gray-500 text-sm space-y-1">
+                            <p>WebSocket target: {wsUrl}</p>
+                            <p>Commands sent: <code className="text-purple-400">trigger_portion</code>, <code className="text-purple-400">force_live_reactive</code>, <code className="text-purple-400">blackout</code></p>
+                            <p className="text-xs">Event/portion data is saved locally in this browser.</p>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        ReactDOM.createRoot(document.getElementById('root')).render(
+            <BackdropController />
+        );
+    </script>
+</body>
+
+</html>
